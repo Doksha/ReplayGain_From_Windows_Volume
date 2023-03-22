@@ -4,6 +4,7 @@
 
 # put path to tracker file here \|/
 trackerPath = r"C:\Users\Main\Documents\Temp\NP\nowPlaying.txt"
+
 # value to assume if no replaygain information exists (the difference between the "With RG info" and "Without RG info):
 withoutRGinfo = -10
 
@@ -24,47 +25,55 @@ from ctypes import cast, POINTER
 from comtypes import CLSCTX_ALL
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 devices = AudioUtilities.GetSpeakers()
-interface = devices.Activate(
-    IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
 volume = cast(interface, POINTER(IAudioEndpointVolume))
-print('pivot volume: ',volume.GetMasterVolumeLevel())
 
+
+# Set baseVol to the pivot volume if you arent using different pivot volumes each time
 baseVol = volume.GetMasterVolumeLevel()
 oldGain = baseVol
+
+
+
+print('pivot volume: ',baseVol)
 
 from mutagen.flac import FLAC
 
 with open(trackerPath, encoding='utf-8') as temp:
     prevPath = temp.read()
     temp.close()
-
+count = 0
 while True:
-#polling interval
+    # polling interval
     time.sleep(2)
+
     with open(trackerPath, encoding='utf-8') as temp:
         path = temp.read()
         temp.close()
-    if path == 'not running':
-        print('|', sep='', end='')
+    if path == 'not running' or path == 'n/a':
+        print('|', '\n' * (count > 50), sep='', end='')
+        count = (count < 50) * (count + 1)
         continue
     if path == prevPath:
         oldGain = volume.GetMasterVolumeLevel()
-        print('.', sep='', end='')
+        print('.', '\n' * (count > 50), sep='', end='')
+        count = (count < 50) * (count + 1)
         continue
-    if prevPath == 'not running':
+    if prevPath == 'not running' or prevPath == 'n/a':
         prevPath = path
         continue
     flcF = FLAC(prevPath)
-    print(flcF['title'])
+    print('\n',flcF['title'])
     try: currentReplayGain = flcF['replaygain_track_gain'][0][:-3]
     except:
         print('\n', 'no replaygain value found; assuming ', withoutRGinfo, 'dB', sep='')
         currentReplayGain = withoutRGinfo
     newReplayGain = (oldGain - baseVol) + float(currentReplayGain)
-    print(currentReplayGain, ' --> ', newReplayGain, '(difference of ', newReplayGain - currentReplayGain, 'dB)', sep='')
+    print(round(float(currentReplayGain), 2), ' --> ', round(float(newReplayGain), 2), '   (difference of ', round(float(newReplayGain) - float(currentReplayGain), 2), 'dB)', sep='')
     flcF['replaygain_track_gain'] = str(str(newReplayGain) + ' dB')
     flcF['RGE'] = 'Edited'
     flcF.save()
 
     prevPath = path
+    count = 0
     currentGain = volume.GetMasterVolumeLevel()
